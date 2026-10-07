@@ -65,9 +65,17 @@ sed -e "s#__PYTHON__#$PYTHON#g" -e "s#__ROOT__#$ROOT#g" -e "s#__PATH__#$PATH_VAL
   config/com.zuebot.bot.plist.template > "$PLIST"
 plutil -lint "$PLIST" >/dev/null || { echo "❌ 產生的 plist 格式有誤：$PLIST"; exit 1; }
 
-launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null   # 已經裝過就先停掉舊的
-launchctl bootstrap "$DOMAIN" "$PLIST" || { echo "❌ 載入失敗"; exit 1; }
-launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1
+# 已經裝過就先停掉舊的。bootout 是在背景完成的，要等它真的卸載後才能重新載入，
+# 否則 bootstrap 會失敗（Bootstrap failed: 5: Input/output error）
+if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+    sleep 1
+  done
+fi
+# RunAtLoad 會在載入時自動啟動，不需要再 kickstart（再 kickstart 會多開一次，造成 409 Conflict）
+launchctl bootstrap "$DOMAIN" "$PLIST" || { echo "❌ 載入失敗，稍等幾秒再執行一次"; exit 1; }
 sleep 3
 if launchctl print "$DOMAIN/$LABEL" | grep -q "state = running"; then
   echo "✅ 已安裝並啟動。Telegram 應該會收到「🤖 zuebot 已啟動」。"

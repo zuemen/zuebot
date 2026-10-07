@@ -11,6 +11,9 @@ import os
 import sys
 from pathlib import Path
 
+if "--help" in sys.argv:
+    print("  --safe-mode   (假的說明文字，模擬新版 claude 支援 safe mode)")
+    sys.exit(0)
 prompt = sys.stdin.read()
 log_path = os.environ.get("FAKE_BRAIN_LOG")
 if log_path:

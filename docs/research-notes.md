@@ -64,3 +64,5 @@
 - **巢狀執行偵測：** Claude Code 會在它開出來的程式裡設定 `CLAUDECODE` 等環境變數。在 Claude Code 裡執行 `cc`、bot 或 selftest 時，新開的 claude 會繼承這些變數，可能以為自己是巢狀執行而拒絕啟動。所以開 CLI 時一律用 `env -u CLAUDECODE …` 清掉，tmux_ops 的環境也會拿掉它。
 - **補按 Enter 的陷阱：** 送字後如果畫面已經變成權限選單，這時「補按 Enter」就等於選了「1. Yes」。所以只有在畫面是「閒置等輸入」時才補按，並加了回歸測試。
 - **`--json-schema` 搭配 `--tools ""`：** 還沒在實機上確認 `structured_output` 一定會出現。brain.py 兩種情況都處理：沒有 `structured_output` 時，就從 `result` 文字裡解析 JSON。selftest 會記錄實際是用哪一種。
+- **`--strict-mcp-config` 擋不住外掛的 MCP 工具（程式碼審查時實測發現）：** 使用者裝的外掛（plugin）所帶的 MCP 伺服器仍然會載入，大腦會嘗試呼叫它們的工具。修正方式是一律加 `--disallowedTools "mcp__*"`；claude 支援 `--safe-mode` 的話也一併加上（外掛、MCP、hook、CLAUDE.md 全部關掉，登入狀態保留）。
+- **選擇題選單：** claude 用選單問你問題（例如「要用哪個資料庫？1. … 2. …」）時，打字會被當成選擇。所以新增 MENU 狀態，這時不送字，改成在 Telegram 上提供選項按鈕。

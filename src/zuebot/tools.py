@@ -233,8 +233,16 @@ class ToolBox:
         async def run(name: str) -> ToolResult:
             state, text = await cli.get_state(name)
             tail = safety.mask_secrets(screen.recent(text, 12))
+            signature = screen.dialog_signature(text)
+            asking = (screen.PERMISSION, screen.MENU, screen.TRUST)
 
             async def do() -> str:
+                # 你按同意時再看一次畫面：確認畫面換成另一個了，或原本沒有確認畫面、現在卻跳出來了 → 不送
+                now_state, now_text = await cli.get_state(name)
+                if state in asking and (now_state != state or screen.dialog_signature(now_text) != signature):
+                    return f"[{name}] 的畫面已經跟你確認時不一樣了，為了安全沒有送出按鍵。要的話請再說一次。"
+                if state not in asking and now_state in asking:
+                    return f"[{name}] 剛剛跳出了新的確認畫面，為了安全沒有送出按鍵。要的話請再說一次。"
                 await tmux_ops.send_key(name, key)
                 self.state.watch(name, chat_id)
                 await asyncio.sleep(1.5)                 # 等畫面更新，讓你確認按對了

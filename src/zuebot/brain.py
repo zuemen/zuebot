@@ -8,6 +8,8 @@ brain.py —— 大腦：把你的口語轉成工具呼叫，並把畫面／回�
     --strict-mcp-config     不載入任何 MCP 伺服器
     --disable-slash-commands  不載入 skills
     --no-session-persistence  不留下對話紀錄
+    --disallowedTools mcp__*  明確禁止所有 MCP 工具（--strict-mcp-config 擋不住「外掛」提供的 MCP 伺服器）
+    --safe-mode             關掉外掛、MCP、hook、CLAUDE.md（較新的 claude 才有，會先檢查 --help 再決定要不要加）
   大腦只能回傳 JSON 說「想做什麼」，由 bot 交給 tools.py 驗證後執行。
 
   另外：
@@ -149,6 +151,21 @@ class Brain:
         self.cfg = cfg
         self.workdir = cfg.data_dir / "brain-workdir"
         self.last_mode = ""      # 最近一次是用 structured_output 還是從文字解析（自我檢查時顯示）
+        self._safe_mode: bool | None = None   # 這個 claude 版本支援 --safe-mode 嗎？第一次呼叫時檢查
+
+    async def _supports_safe_mode(self) -> bool:
+        """檢查 claude --help 裡有沒有 --safe-mode（結果記住，只檢查一次）。"""
+        if self._safe_mode is None:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *shlex.split(self.cfg.brain_cmd), "--help", stdin=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, env=self._env())
+                out, _ = await asyncio.wait_for(proc.communicate(), 20)
+                self._safe_mode = b"--safe-mode" in out
+            except (OSError, asyncio.TimeoutError):
+                self._safe_mode = False
+            log.info("大腦%s使用 --safe-mode", "" if self._safe_mode else "不")
+        return self._safe_mode
 
     def _env(self) -> dict[str, str]:
         """大腦子行程的環境變數：標記成大腦、移除 tmux 相關變數。"""
@@ -164,7 +181,10 @@ class Brain:
         self.workdir.mkdir(parents=True, exist_ok=True)
         cmd = [*shlex.split(self.cfg.brain_cmd), "-p", "--output-format", "json", "--tools", "",
                "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+               "--disallowedTools", "mcp__*",      # 這個參數可以接好幾個值，後面一定要緊接另一個選項
                "--system-prompt", system]
+        if await self._supports_safe_mode():
+            cmd.append("--safe-mode")
         if model:
             cmd += ["--model", model]
         if schema:
@@ -190,6 +210,8 @@ class Brain:
             data = json.loads(stdout) if stdout else {}
         except json.JSONDecodeError:
             data = {}
+        if not isinstance(data, dict):
+            data = {"result": str(data)}
         if proc.returncode != 0 or data.get("is_error"):
             detail = str(data.get("result") or stderr or stdout or f"結束碼 {proc.returncode}")[:300]
             if re.search(r"log ?in|auth|credential|401", detail, re.IGNORECASE):
@@ -197,8 +219,6 @@ class Brain:
             if re.search(r"limit|quota|429|overloaded", detail, re.IGNORECASE):
                 raise BrainError(f"訂閱額度或服務暫時受限：{detail}")
             raise BrainError(f"claude -p 執行失敗：{detail}")
-        if not isinstance(data, dict):
-            raise BrainError("claude -p 回傳的格式看不懂")
         log.debug("大腦 ◀ %s", str(data.get("structured_output") or data.get("result"))[:500])
         return data
 

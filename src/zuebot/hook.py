@@ -64,21 +64,26 @@ def last_assistant_text(transcript_path: str) -> str:
         return ""
     for line in reversed(lines):
         try:
-            ev = json.loads(line)
+            text = _assistant_text(json.loads(line))
         except Exception:
-            continue
-        if not isinstance(ev, dict) or ev.get("type") != "assistant":
-            continue
-        content = (ev.get("message") or {}).get("content", [])
-        if isinstance(content, str):
-            if content.strip():
-                return content
-            continue
-        texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-        text = "\n".join(t for t in texts if t.strip())
+            continue   # 看不懂的行（格式改了、寫到一半）就跳過，繼續往前找
         if text:
             return text
     return ""
+
+
+def _assistant_text(ev: object) -> str:
+    """從 transcript 的一行取出 assistant 的文字；不是 assistant 的行或沒有文字就回傳空字串。"""
+    if not isinstance(ev, dict) or ev.get("type") != "assistant":
+        return ""
+    message = ev.get("message")
+    content = message.get("content") if isinstance(message, dict) else message
+    if isinstance(content, str):
+        return content if content.strip() else ""
+    if not isinstance(content, list):
+        return ""
+    texts = [str(b.get("text") or "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+    return "\n".join(t for t in texts if t.strip())
 
 
 def read_reply_with_retry(transcript_path: str) -> str:

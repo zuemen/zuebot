@@ -57,7 +57,7 @@ async def deliver(name: str, text: str, verify: bool = True) -> str:
       - claude 還沒登入
     """
     state, _ = await get_state(name)
-    if state in (screen.TRUST, screen.PERMISSION):
+    if state in (screen.TRUST, screen.PERMISSION, screen.MENU):
         raise TmuxError(f"[{name}] 現在{screen.STATE_LABELS[state]}，要先處理那個畫面才能送訊息")
     if state == screen.LOGIN:
         raise TmuxError(f"[{name}] 的 claude 還沒登入，請先在電腦上登入")
@@ -94,7 +94,7 @@ async def wait_for_startup(name: str, timeout: float = STARTUP_TIMEOUT) -> tuple
         if not await tmux_ops.session_exists(name):
             raise TmuxError(f"[{name}] 啟動後馬上就結束了，可能是 claude 指令找不到（檢查 .env 的 CLAUDE_CMD）")
         state, text = await get_state(name)
-        if state in (screen.IDLE, screen.TRUST, screen.LOGIN, screen.PERMISSION):
+        if state in (screen.IDLE, screen.TRUST, screen.LOGIN, screen.PERMISSION, screen.MENU):
             return state, text
         await asyncio.sleep(STARTUP_POLL)
     return state, text

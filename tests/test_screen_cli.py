@@ -106,6 +106,20 @@ class TestScreen(unittest.TestCase):
         self.assertFalse(screen.text_still_in_input(IDLE_BOX, "幫我整理 related work"))
         self.assertFalse(screen.text_still_in_input('│ > Try "fix lint errors"', "幫我整理"))
 
+    def test_question_menu(self):
+        """claude 問選擇題（AskUserQuestion）時是 MENU，不是 IDLE（否則打字會被當成選擇）。"""
+        menu = ("● 你想用哪個資料庫？\n╭────╮\n│ > 幫我建專案 │\n╰────╯\n"
+                "Which database?\n❯ 1. PostgreSQL\n  2. SQLite\n  3. Type something.\nEnter to select · ↑/↓ to navigate · Esc to cancel")
+        self.assertEqual(screen.detect_state(menu), screen.MENU)
+        self.assertIsNone(screen.input_box_line(menu))
+
+    def test_dialog_signature(self):
+        """同一個確認畫面指紋相同（狀態列變了也一樣）；換成另一個指令的確認，指紋就不同。"""
+        other = PERMISSION_SCREEN.replace("rm -rf build", "rm -rf ~")
+        self.assertEqual(screen.dialog_signature(PERMISSION_SCREEN), screen.dialog_signature(PERMISSION_SCREEN + "\n  ⏵⏵ 12s"))
+        self.assertNotEqual(screen.dialog_signature(PERMISSION_SCREEN), screen.dialog_signature(other))
+        self.assertEqual(screen.dialog_signature(IDLE_BOX), "")
+
     def test_menu_is_not_input(self):
         """「❯ 1. Yes」是選單，不能被當成輸入框。"""
         self.assertIsNone(screen.input_box_line("❯ 1. Yes\n  2. No"))

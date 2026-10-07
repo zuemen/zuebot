@@ -51,7 +51,7 @@ class MonitorUI(Protocol):
     async def show_buttons(self, chat_id: int, text: str,
                            options: list[tuple[str, Callable[[], Awaitable[Any]] | None]],
                            timeout: float, per_row: int = 1, single_use: bool = True,
-                           expire_note: str = "") -> None:
+                           expire_note: str = "", group: str | None = None) -> None:
         """傳一則附按鈕的訊息。"""
 
 
@@ -173,6 +173,13 @@ class Monitor:
             if ntype == "permission_prompt":
                 self.toolbox.spawn(self.notify_permission(name, chat_id, ev))
                 return
+            try:
+                state, _ = await cli.get_state(name, 40)
+            except TmuxError:
+                state = screen.UNKNOWN
+            if state in (screen.PERMISSION, screen.MENU):
+                self.toolbox.spawn(self.notify_permission(name, chat_id, ev))   # 例如 claude 問你選擇題
+                return
             await self.notify_attention(name, chat_id, ev)
 
     async def notify_permission(self, name: str, chat_id: int, ev: dict[str, Any]) -> None:
@@ -187,12 +194,16 @@ class Monitor:
                 state, text = await cli.get_state(name, 40)
             except TmuxError:
                 return
-            if state == screen.PERMISSION:
+            if state in (screen.PERMISSION, screen.MENU):
                 break
-        if state != screen.PERMISSION and ev.get("event") == "Notification":
-            return                               # 已經不是確認畫面（你可能已經在電腦上處理了）
+        if state not in (screen.PERMISSION, screen.MENU):
+            if ev.get("event") == "Notification":
+                return                           # 已經不是確認畫面（你可能已經在電腦上處理了）
+            await self.notify_attention(name, chat_id, ev)   # PermissionRequest 但畫面看不到選單：只通知、不給按鈕
+            return
         tail = screen.recent(text, 15)
-        digest = hash(tail)
+        signature = screen.dialog_signature(text)
+        digest = hash(signature or tail)
         last = self.last_permission.get(name)
         if last and last[0] == digest and time.time() - last[1] < PERMISSION_DEDUP:
             return                               # 同一個畫面已經通知過
@@ -201,28 +212,37 @@ class Monitor:
         if ev.get("event") == "PermissionRequest":
             tool_input = str(ev.get("tool_input") or "")
             detail = f"它想使用 {ev.get('tool_name') or '某個工具'}：{tool_input[:400]}"
+        elif state == screen.MENU:
+            detail = str(ev.get("message") or "它在等你從選單選一個選項")
         else:
             detail = str(ev.get("message") or "它在等你確認")
         options = screen.menu_options(text) or [("1", "Yes（允許）"), ("2", "Yes, and don't ask again（允許且不再詢問）")]
         buttons: list[tuple[str, Callable[[], Awaitable[Any]] | None]] = []
         for key, label in options:
-            if label.lower().startswith("no"):
-                continue                         # 「No」用下面的 Esc 按鈕
-            buttons.append((f"{'✅' if key == '1' else '☑️'} {key}. {label[:40]}",
-                            lambda key=key, label=label: self.answer_permission(name, chat_id, key, label)))
-        buttons.append(("❌ 拒絕（Esc）", lambda: self.answer_permission(name, chat_id, "esc", "拒絕")))
+            if state == screen.PERMISSION and label.lower().startswith("no"):
+                continue                         # 權限確認的「No」用下面的 Esc 按鈕
+            mark = ("✅" if key == "1" else "☑️") if state == screen.PERMISSION else "🔘"
+            buttons.append((f"{mark} {key}. {label[:40]}",
+                            lambda key=key, label=label: self.answer_permission(name, chat_id, key, label, signature)))
+        buttons.append(("❌ 拒絕／取消（Esc）", lambda: self.answer_permission(name, chat_id, "esc", "拒絕", signature)))
         minutes = max(1, int(self.cfg.permission_button_timeout // 60))
         await self.ui.show_buttons(
             chat_id,
             f"🔔 [{name}] 在等你確認\n{detail}\n\n{tail}\n\n按下面的按鈕回應（{minutes} 分鐘內有效，按了才會送出按鍵）",
             buttons, self.cfg.permission_button_timeout,
-            expire_note="⌛ 按鈕已失效。若它還在等，可以說「幫我看一下它在問什麼」。")
+            expire_note="⌛ 按鈕已失效。若它還在等，可以說「幫我看一下它在問什麼」。",
+            group=f"permission:{name}")          # 同一個 CLI 的新確認通知會讓舊的按鈕失效
 
-    async def answer_permission(self, name: str, chat_id: int, key: str, label: str) -> str:
-        """按下權限按鈕後執行：再確認一次畫面還是權限確認，才送出按鍵。"""
-        state, _ = await cli.get_state(name)
-        if state != screen.PERMISSION:
+    async def answer_permission(self, name: str, chat_id: int, key: str, label: str, signature: str = "") -> str:
+        """
+        按下權限按鈕後執行：再確認一次畫面仍是「當初通知你的那一個」確認畫面（指紋相同），才送出按鍵。
+        畫面已經處理掉、或換成另一個確認（例如變成 rm 指令），都不會送。
+        """
+        state, text = await cli.get_state(name)
+        if state not in (screen.PERMISSION, screen.MENU):
             return f"[{name}] 已經不是權限確認畫面了（可能已經在電腦上處理過），沒有送出任何按鍵。"
+        if signature and screen.dialog_signature(text) != signature:
+            return f"[{name}] 現在的確認畫面跟通知你的那一個不一樣了，為了安全沒有送出按鍵。新的確認會另外通知你。"
         await tmux_ops.send_key(name, key)
         self.toolbox.awaiting[name] = time.time()
         await asyncio.sleep(1.5)

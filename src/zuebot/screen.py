@@ -4,6 +4,7 @@ screen.py —— 判讀 Claude Code 的終端畫面（純文字處理，不碰 t
 bot 需要知道 CLI 現在是什麼狀態，才能決定能不能送字、要不要問你：
   TRUST       第一次在某資料夾開 claude，問「是否信任這個資料夾」
   PERMISSION  權限確認選單（例如「Do you want to proceed? 1. Yes 2. … 3. No」）
+  MENU        其他選單（例如 claude 問你要選哪個方案：1. … 2. …）——這時打字會被當成選擇
   LOGIN       claude 還沒登入
   BUSY        正在工作（畫面上有「esc to interrupt」）
   IDLE        閒置，輸入框在等你打字
@@ -20,6 +21,7 @@ import re
 
 TRUST = "trust"
 PERMISSION = "permission"
+MENU = "menu"
 LOGIN = "login"
 BUSY = "busy"
 IDLE = "idle"
@@ -29,6 +31,7 @@ UNKNOWN = "unknown"
 STATE_LABELS = {
     TRUST: "在問是否信任資料夾",
     PERMISSION: "在等你確認權限",
+    MENU: "在等你從選單選一個選項",
     LOGIN: "還沒登入 claude",
     BUSY: "執行中",
     IDLE: "閒置（等你輸入）",
@@ -56,6 +59,8 @@ _BUSY_RE = re.compile(r"(esc|ctrl\+c) to interrupt", re.IGNORECASE)
 _PROMPT_LINE_RE = re.compile(r"^\s*(?:[│|]\s*)?[>❯](?:\s(.*?))?\s*(?:[│|])?\s*$")
 _IDLE_HINT_RE = re.compile(r"\? for shortcuts|shift\+tab to cycle", re.IGNORECASE)
 _MENU_LINE_RE = re.compile(r"^\s*(?:[│|]\s*)?[>❯]\s*\d+\.\s")   # 「❯ 1. Yes」是選單，不是輸入框
+_OPTION_LINE_RE = re.compile(r"^\s*(?:[│|]\s*)?(?:[>❯]\s*)?[1-9]\.\s+\S")   # 任何「1. 選項」形式的行
+_SELECT_HINT_RE = re.compile(r"enter to select|↑/↓ to navigate|esc to cancel", re.IGNORECASE)
 
 SHELLS = {"zsh", "bash", "sh", "fish", "-zsh", "-bash", "login", "tcsh", "dash"}
 
@@ -105,6 +110,11 @@ def detect_state(screen: str) -> str:
     ask = _last_index(rows, _PERMISSION_ASK_RE)
     if ask >= 0 and option >= 0 and option > prompt and option >= ask - 1:
         return PERMISSION
+    # 其他選單：輸入框下面出現「1. …」選項，或出現「Enter to select」提示 → 打字會被當成選擇
+    menu_option = _last_index(rows, _OPTION_LINE_RE)
+    select_hint = _last_index(rows, _SELECT_HINT_RE)
+    if (menu_option > prompt and menu_option >= len(rows) - 10) or (select_hint > prompt and select_hint >= 0):
+        return MENU
     login = _last_index(rows, _LOGIN_RE)
     if login >= 0 and login > prompt:
         return LOGIN
@@ -165,6 +175,22 @@ def menu_options(screen_text: str) -> list[tuple[str, str]]:
         if m and m.group(1) not in {k for k, _ in options}:
             options.append((m.group(1), m.group(2).strip()))
     return options
+
+
+def dialog_signature(screen_text: str) -> str:
+    """
+    確認畫面的「指紋」：最下方選單的選項，加上選項上方幾行（通常是它要執行的指令或要改的檔案）。
+    按下權限按鈕時比對指紋，確定還是「當初通知你的那一個」確認畫面才送鍵，
+    避免舊按鈕回答到後來才跳出來的另一個確認（例如變成 rm 指令）。
+    底部的狀態列、計時器不算在內，所以不會因為時間在跑就誤判成畫面變了。
+    """
+    rows = [r for r in screen_text.splitlines() if r.strip()][-25:]
+    option_rows = [i for i, r in enumerate(rows) if _MENU_OPTION_RE.match(r)]
+    if not option_rows:
+        return ""
+    first, last = option_rows[0], option_rows[-1]
+    block = rows[max(0, first - 8):last + 1]
+    return "\n".join(re.sub(r"[│|╭╮╰╯─\s]+", " ", r).strip() for r in block)
 
 
 def is_shell(command: str) -> bool:

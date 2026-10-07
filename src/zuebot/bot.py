@@ -57,6 +57,7 @@ RAW_BUTTON_TIMEOUT = 86400  # 「📄 原文」按鈕保留一天
 MAX_BRAIN_ROUNDS = 3        # 大腦最多來回幾輪（看畫面 → 再決定）
 HISTORY_TURNS = 8           # 給大腦參考的最近對話則數
 ALERT_INTERVAL = 300        # 同一類錯誤幾秒內只通知一次，避免洗版
+STALE_MESSAGE = 300         # 超過幾秒的舊訊息不執行（bot 停機期間累積的訊息，重開後不該突然照做）
 
 HELP = (__doc__ or "").split("用口語說就好", 1)[1].strip()
 HELP = "用口語說就好" + HELP
@@ -80,6 +81,7 @@ class ButtonSet:
     options: list[tuple[str, ButtonAction | None]]   # (按鈕文字, 按下後執行的動作；None＝取消)
     single_use: bool = True                          # 按過一次就失效（確認類按鈕）
     message_id: int | None = None
+    group: str | None = None                         # 同一群組只保留最新的一組（例如同一個 CLI 的權限確認）
 
 
 def split_message(text: str, limit: int = MAX_TG) -> list[str]:
@@ -111,7 +113,18 @@ def authorized_only(func: Callable[..., Awaitable[None]]) -> Callable[..., Await
             elif update.effective_message:
                 await update.effective_message.reply_text(f"未授權。你的 user id 是 {user.id if user else '未知'}")
             return
-        await func(self, update, ctx)
+        msg = update.effective_message if update.callback_query is None else None
+        sent_at = getattr(msg, "date", None)
+        if sent_at is not None and time.time() - sent_at.timestamp() > STALE_MESSAGE:
+            minutes = int((time.time() - sent_at.timestamp()) // 60)
+            await msg.reply_text(f"⏸ 這則訊息是 {minutes} 分鐘前（bot 沒在運作時）傳的，為了安全沒有執行。需要的話請再傳一次。")
+            return
+        try:
+            await func(self, update, ctx)
+        except tmux_ops.TmuxError as e:
+            # 斜線指令遇到 tmux 錯誤（例如 CLI 正在等確認、找不到 session）：直接回一句人話
+            if update.effective_chat:
+                await self.notify(update.effective_chat.id, f"❌ {e}")
     return wrapper
 
 
@@ -141,11 +154,17 @@ class ZueBot:
 
     async def show_buttons(self, chat_id: int, text: str, options: list[tuple[str, ButtonAction | None]],
                            timeout: float, per_row: int = 1, single_use: bool = True,
-                           expire_note: str = "⌛ 已逾時，自動取消") -> None:
+                           expire_note: str = "⌛ 已逾時，自動取消", group: str | None = None) -> None:
         """
         傳一則附按鈕的訊息。timeout 秒後按鈕自動失效，並在訊息後面註明。
         callback_data 只放短 id（Telegram 限制 64 bytes），實際動作存在記憶體裡。
+        group：同一群組的舊按鈕會立刻失效（例如同一個 CLI 又跳出新的權限確認，舊按鈕就不能再按）。
         """
+        if group:
+            for old_id, old in list(self.buttons.items()):
+                if old.group == group:
+                    self.buttons.pop(old_id, None)
+                    await self._mark_expired(old, "⌛ 已經有新的確認畫面，這組按鈕已失效")
         bid = uuid.uuid4().hex[:12]
         chunks = split_message(safety.mask_secrets(text))
         for chunk in chunks[:-1]:
@@ -159,19 +178,25 @@ class ZueBot:
         if row:
             rows.append(row)
         msg = await self.app.bot.send_message(chat_id=chat_id, text=chunks[-1], reply_markup=InlineKeyboardMarkup(rows))
-        self.buttons[bid] = ButtonSet(chat_id, chunks[-1], options, single_use, msg.message_id)
+        self.buttons[bid] = ButtonSet(chat_id, chunks[-1], options, single_use, msg.message_id, group)
         self.toolbox.spawn(self._expire_buttons(bid, timeout, expire_note))
 
     async def _expire_buttons(self, bid: str, timeout: float, note: str) -> None:
         """逾時後讓按鈕失效：移除按鈕並在訊息後面加上說明。"""
         await asyncio.sleep(timeout)
         bs = self.buttons.pop(bid, None)
-        if bs and bs.message_id:
-            try:
-                await self.app.bot.edit_message_text(chat_id=bs.chat_id, message_id=bs.message_id,
-                                                     text=f"{bs.text}\n\n{note}")
-            except TelegramError:
-                pass
+        if bs:
+            await self._mark_expired(bs, note)
+
+    async def _mark_expired(self, bs: ButtonSet, note: str) -> None:
+        """把按鈕從訊息上拿掉，並在訊息後面加上說明（失敗就算了，不影響其他事）。"""
+        if not bs.message_id:
+            return
+        try:
+            await self.app.bot.edit_message_text(chat_id=bs.chat_id, message_id=bs.message_id,
+                                                 text=f"{bs.text}\n\n{note}" if note else bs.text)
+        except TelegramError:
+            pass
 
     async def confirm(self, chat_id: int, pending: Pending) -> None:
         """顯示「✅ 同意／❌ 取消」確認按鈕（PROMPT.md 第 6 節第 2 點）。"""
@@ -220,12 +245,15 @@ class ZueBot:
             label, action = bs.options[int(idx)] if bs else ("", None)
         except (ValueError, IndexError):
             bs = None
+        # 重要：在任何 await 之前就把單次按鈕取走。bot 會同時處理多個更新，
+        # 如果先 await 再取走，連點兩下（或先按同意再按取消）會讓動作執行兩次。
+        if bs is not None and bs.single_use and self.buttons.pop(bid, None) is None:
+            bs = None
         if bs is None:
             await query.answer("這個按鈕已經失效了")
             return
         await query.answer()
         if bs.single_use:
-            self.buttons.pop(bid, None)
             note = "❌ 已取消" if action is None else f"👉 你選了：{label}"
             try:
                 await query.edit_message_text(f"{bs.text}\n\n{note}")
@@ -509,10 +537,12 @@ class ZueBot:
                     ("paste", self.cmd_paste), ("cancel", self.cmd_cancel), ("watch", self.cmd_watch),
                     ("unwatch", self.cmd_unwatch), ("key", self.cmd_key), ("new", self.cmd_new),
                     ("kill", self.cmd_kill)]
+        # 只處理「新訊息」：你在 Telegram 編輯舊訊息時（例如修錯字），不會再執行一次
+        new_only = filters.UpdateType.MESSAGE
         for cmd, fn in handlers:
-            app.add_handler(CommandHandler(cmd, fn))
+            app.add_handler(CommandHandler(cmd, fn, filters=new_only))
         app.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^b:"))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & new_only, self.on_text))
         app.add_error_handler(self.on_error)
         return app
 

@@ -148,7 +148,11 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         msg.reply_text = reply_text
         update = SimpleNamespace(effective_user=SimpleNamespace(id=user), effective_chat=SimpleNamespace(id=user),
                                  effective_message=msg, callback_query=None)
-        await self.zb.on_text(update, SimpleNamespace(args=text.split()[1:]))
+        ctx = SimpleNamespace(args=text.split()[1:])
+        if text.startswith("/send "):
+            await self.zb.cmd_send(update, ctx)
+        else:
+            await self.zb.on_text(update, ctx)
         return msg
 
     async def press(self, label):
@@ -189,6 +193,9 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         argv = call["argv"]
         self.assertEqual(argv[argv.index("--tools") + 1], "")
         self.assertIn("--strict-mcp-config", argv)
+        self.assertEqual(argv[argv.index("--disallowedTools") + 1], "mcp__*")   # 外掛的 MCP 工具也禁止
+        self.assertTrue(argv[argv.index("--disallowedTools") + 2].startswith("--"))  # 後面緊接選項，不會吃掉其他參數
+        self.assertIn("--safe-mode", argv)                                      # 支援時會加上 safe mode
         self.assertEqual(call["ZUEBOT_BRAIN"], "1")
         self.assertIsNone(call["TMUX_PANE"])
 
@@ -392,6 +399,27 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restarted.state.watcher("競賽"), USER)
         self.assertEqual(restarted.state.get_current(USER), "競賽")
         self.assertTrue(any("zuebot 已啟動" in m and "競賽" in m for m in tg.texts()))
+
+    async def test_double_tap_runs_once(self):
+        """確認按鈕連點兩下（bot 同時處理兩個點擊）只會執行一次。"""
+        await self.open_cli("競賽")
+        await self.say("/send 競賽 git push --force 只送一次")
+        btn = next(b for m in reversed(self.tg.sent) if m.markup for row in m.markup.inline_keyboard
+                   for b in row if "同意" in b.text)
+        tap = SimpleNamespace(effective_user=SimpleNamespace(id=USER), callback_query=FakeQuery(btn.callback_data),
+                              effective_message=None)
+        await asyncio.gather(self.zb.on_button(tap, None), self.zb.on_button(tap, None))
+        await asyncio.sleep(0.6)
+        self.assertEqual((await self.screen("競賽")).count("收到：git push --force 只送一次"), 1)
+
+    async def test_old_permission_button_refuses_new_prompt(self):
+        """舊的權限按鈕：畫面換成另一個確認時拒絕送鍵。"""
+        await self.open_cli("競賽")
+        await tmux_ops.paste_text("競賽", "請執行 ASKPERM")
+        await asyncio.sleep(0.5)
+        result = await self.zb.monitor.answer_permission("競賽", USER, "1", "Yes", signature="另一個確認畫面的指紋")
+        self.assertIn("不一樣了", result)
+        self.assertNotIn("權限回答", await self.screen("競賽"))
 
     async def test_new_cli_outside_root_rejected(self):
         """new_cli 只能在 ALLOWED_ROOT 底下。"""
