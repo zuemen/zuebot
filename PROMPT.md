@@ -147,11 +147,12 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 - [x] 保留 `reference/v0/` 不動，當作對照
 
 ### Phase 1：在 Mac 上用真的 claude 驗證 v0 功能
-- [ ] 寫一份 `docs/mac-setup.md`：安裝 Homebrew／tmux／Python venv、建 bot、取得 user id、合併 hooks 設定、啟動、防止睡眠
-- [ ] 寫 `scripts/check_env.sh`：檢查 tmux、claude、python 版本、hooks 是否已設定、`.env` 是否齊全，逐項印出 ✅／❌
-- [ ] 查證 Stop／Notification hook 的實際輸入欄位，修正 `hook.py`；若 Stop 當下 transcript 還沒寫完，要加短暫重試
-- [ ] 驗證 bracketed paste 在 Claude Code TUI 的行為（單行、多行、中文、很長的文字），必要時調整等待時間或改用其他送字方式
-- [ ] 處理「信任此資料夾」提示：`new_cli` 要偵測到這個畫面並告訴我，而不是卡住
+> 另外新增：`scripts/install.sh`（一鍵安裝）、`python -m zuebot.setup_hooks`（自動合併 hook 設定）、`python -m zuebot.selftest`（實機自我檢查並產生報告）。
+- [x] 寫一份 `docs/mac-setup.md`：安裝 Homebrew／tmux／Python venv、建 bot、取得 user id、合併 hooks 設定、啟動、防止睡眠
+- [x] 寫 `scripts/check_env.sh`：檢查 tmux、claude、python 版本、hooks 是否已設定、`.env` 是否齊全，逐項印出 ✅／❌
+- [x] 查證 Stop／Notification hook 的實際輸入欄位，修正 `hook.py`；若 Stop 當下 transcript 還沒寫完，要加短暫重試（官方文件已查證；⏳ 實機欄位由 `python -m zuebot.selftest` 記錄）
+- [x] 驗證 bracketed paste 在 Claude Code TUI 的行為（單行、多行、中文、很長的文字），必要時調整等待時間或改用其他送字方式（送完自動檢查、必要時補按 Enter；⏳ 實機由 selftest 驗證）
+- [x] 處理「信任此資料夾」提示：`new_cli` 要偵測到這個畫面並告訴我，而不是卡住
 - [x] 加入 `--debug` 模式，把每個 tmux 指令和 hook 事件印到 log
 
 ### Phase 2：自然語言大腦

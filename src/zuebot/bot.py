@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable
 from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-from . import tmux_ops
+from . import cli, screen, tmux_ops
 from .config import Config
 from .events import EventReader
 from .state import State
@@ -39,7 +39,6 @@ log = logging.getLogger(__name__)
 MAX_TG = 3900               # Telegram 單則上限 4096 字，留一點餘裕
 PASTE_TIMEOUT = 300         # /paste 等待下一則訊息的秒數
 EVENT_POLL_SECONDS = 2      # 每幾秒讀一次事件檔
-NEW_CLI_WAIT_SECONDS = 6    # /new 開好之後，等 claude 啟動幾秒再送第一個任務（Phase 1 會改成偵測畫面）
 
 # /help 顯示的說明：直接取用本檔開頭說明中「能做的事」那一段，兩邊永遠一致
 HELP = "能做的事：\n" + (__doc__ or "").split("能做的事：")[1].split("之後的 Phase")[0].strip()
@@ -123,12 +122,12 @@ class ZueBot:
     async def deliver(self, update: Update, name: str, text: str) -> None:
         """送訊息進 CLI，並自動關注，完成時會回報。"""
         try:
-            await tmux_ops.paste_text(name, text)
+            note = await cli.deliver(name, text)
         except TmuxError as e:
             await self.reply(update, f"❌ {e}")
             return
         self.state.watch(name, update.effective_chat.id)
-        await self.reply(update, f"📨 已送到 [{name}]，完成時會通知你。")
+        await self.reply(update, f"📨 已送到 [{name}]，完成時會通知你。{note}")
 
     # ───────────── Telegram 指令 ─────────────
     @authorized_only
@@ -275,17 +274,24 @@ class ZueBot:
         chat_id = update.effective_chat.id
         self.state.set_current(chat_id, name)
         self.state.watch(name, chat_id)
-        await self.reply(update, f"🆕 已開 [{name}]（{cwd}），設為目前對象。")
-        await asyncio.sleep(NEW_CLI_WAIT_SECONDS if first else 4)
-        if first:
-            await self.deliver(update, name, first)
-            return
+        await self.reply(update, f"🆕 已開 [{name}]（{cwd}），設為目前對象，等待 claude 啟動…")
         try:
-            screen = await tmux_ops.tail(name, 15)
+            state, text = await cli.wait_for_startup(name)
         except TmuxError as e:
-            screen = f"（{e}）"
-        await self.reply(update, "畫面（第一次在某資料夾開 claude 可能會問是否信任資料夾，"
-                                 f"可用 /key {name} enter 確認）：\n\n{screen}")
+            await self.reply(update, f"❌ {e}")
+            return
+        if state == screen.IDLE:
+            if first:
+                await self.deliver(update, name, first)
+            else:
+                await self.reply(update, f"✅ [{name}] 已就緒，可以開始傳訊息了。")
+            return
+        hint = {
+            screen.TRUST: f"第一次在這個資料夾開 claude，它在問是否信任。確認沒問題請傳 /key {name} enter，"
+                          f"然後再把任務傳給它。",
+            screen.LOGIN: "claude 還沒登入，請回到電腦上執行 claude 並輸入 /login。",
+        }.get(state, "等了一段時間還沒看到輸入框，請看一下畫面。")
+        await self.reply(update, f"⚠️ [{name}] {hint}\n\n{screen.recent(text, 15)}")
 
     @authorized_only
     async def cmd_kill(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:

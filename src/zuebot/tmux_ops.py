@@ -160,6 +160,12 @@ def validate_name(name: str) -> None:
         raise TmuxError("名稱只能用中英文、數字、底線、連字號，30 字以內（不能有空白、冒號、句點）")
 
 
+async def version() -> str:
+    """回傳 tmux 版本字串，例如「tmux 3.5a」；找不到 tmux 時回傳錯誤說明。"""
+    r = await _runner.run(["-V"])
+    return (r.stdout or r.stderr).strip()
+
+
 async def list_sessions() -> list[SessionInfo]:
     """列出所有 tmux session。沒有 tmux server 在跑（一個 session 都沒有）時回傳空清單。"""
     fmt = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{pane_id}"
@@ -199,6 +205,12 @@ async def session_of_pane(pane_id: str) -> str | None:
     r = await _runner.run(["display-message", "-p", "-t", pane_id, "#{session_name}"])
     name = r.stdout.strip()
     return name if r.ok and name else None
+
+
+async def pane_command(name: str) -> str:
+    """回傳那個 CLI 目前的前景程式名稱（例如 claude、node、zsh）；讀不到回傳空字串。"""
+    r = await _runner.run(["display-message", "-p", "-t", pane_target(name), "#{pane_current_command}"])
+    return r.stdout.strip() if r.ok else ""
 
 
 async def capture(name: str, lines: int = 40) -> str:

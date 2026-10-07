@@ -108,10 +108,13 @@ def _parse_user_ids(raw: str) -> frozenset[int]:
     return frozenset(ids)
 
 
-def load_config() -> Config:
-    """從環境變數組出 Config；缺少必要設定時丟出 ConfigError。"""
+def load_config(require_token: bool = True) -> Config:
+    """
+    從環境變數組出 Config；缺少必要設定時丟出 ConfigError。
+    require_token=False 給不需要連 Telegram 的工具用（例如自我檢查）。
+    """
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    if not token:
+    if not token and require_token:
         raise ConfigError("還沒設定 TELEGRAM_BOT_TOKEN。請複製 .env.example 成 .env，填入 BotFather 給你的 token。")
 
     allowed_root = Path(os.environ.get("ALLOWED_ROOT", str(Path.home()))).expanduser().resolve()

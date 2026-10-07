@@ -28,6 +28,8 @@ from pathlib import Path
 
 MAX_TEXT_CHARS = 20000          # 單一欄位最多保留幾個字，避免事件檔被超長回覆撐爆
 TRANSCRIPT_TAIL_BYTES = 2_000_000   # 讀 transcript 備援時只讀最後 2MB，大檔也很快
+TRANSCRIPT_RETRIES = 5              # transcript 還沒寫完時最多重試幾次
+TRANSCRIPT_RETRY_DELAY = 0.3        # 每次重試間隔（秒）
 
 
 def events_path() -> Path:
@@ -79,6 +81,19 @@ def last_assistant_text(transcript_path: str) -> str:
     return ""
 
 
+def read_reply_with_retry(transcript_path: str) -> str:
+    """
+    Stop 觸發的當下，transcript 可能還沒寫完最後一則回覆。
+    讀不到就每 0.3 秒重試一次，最多 5 次（總共不到 2 秒，遠低於 hook 的逾時限制）。
+    """
+    for attempt in range(TRANSCRIPT_RETRIES):
+        text = last_assistant_text(transcript_path)
+        if text or not transcript_path:
+            return text
+        time.sleep(TRANSCRIPT_RETRY_DELAY)
+    return ""
+
+
 def read_input() -> dict:
     """讀 stdin 的 JSON。手動在終端機執行（stdin 是鍵盤）時不等待輸入，直接回傳空字典。"""
     if sys.stdin is None or sys.stdin.isatty():
@@ -98,6 +113,7 @@ def build_event(data: dict, pane: str) -> dict:
         "pane": pane,                                     # 例如 "%3"，bot 用它反查 session
         "cwd": data.get("cwd", ""),
         "claude_session_id": data.get("session_id", ""),
+        "keys": sorted(str(k) for k in data.keys()),     # 收到哪些欄位，自我檢查時用來對照官方文件
     }
     if event["event"] == "Notification":
         event["notification_type"] = data.get("notification_type", "")   # permission_prompt、idle_prompt …
@@ -105,7 +121,9 @@ def build_event(data: dict, pane: str) -> dict:
         event["message"] = clip(data.get("message", ""))
     elif event["event"] == "Stop":
         # 官方文件已列出 last_assistant_message；舊版沒有的話才去讀 transcript
-        reply = data.get("last_assistant_message") or last_assistant_text(data.get("transcript_path", ""))
+        reply = data.get("last_assistant_message") or ""
+        if not reply:
+            reply = read_reply_with_retry(data.get("transcript_path", ""))
         event["reply"] = clip(reply)
     else:
         # 其他事件（之後可能接 PermissionRequest）：保留工具名稱與參數，方便 bot 轉述
