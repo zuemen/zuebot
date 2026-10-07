@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}

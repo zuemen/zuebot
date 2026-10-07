@@ -1,0 +1,17 @@
+# 讓這個專案可以用 `pip install -e .` 安裝，之後在任何資料夾都能執行 `python -m zuebot`
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zuebot"
+version = "0.1.0"
+description = "用 Telegram 指揮 Claude Code CLI 的管家 bot"
+requires-python = ">=3.10"
+dependencies = ["python-telegram-bot>=22.0,<23"]
+
+[project.scripts]
+zuebot = "zuebot.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

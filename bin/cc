@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# cc —— 用 tmux 開一個 Claude CLI，讓 zuebot 管得到它
+#
+# 用法：cc <名稱> [資料夾]
+#   cc 競賽 ~/projects/chainlens   → 開新的並進入畫面
+#   cc 競賽                        → 已存在就直接回到那個畫面
+#   cc                             → 列出目前所有的 CLI
+# 離開畫面但讓它繼續跑：按 Ctrl-b 再按 d
+#
+# 可用環境變數：TMUX_BIN（tmux 位置）、CLAUDE_CMD（要執行的指令，預設 claude）
+
+TMUX_BIN="${TMUX_BIN:-tmux}"
+CLAUDE_CMD="${CLAUDE_CMD:-claude}"
+
+# 確保 UTF-8：沒有 UTF-8 locale 時，tmux 會把中文名稱變成底線
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *UTF-8*|*utf-8*|*UTF8*|*utf8*) ;;
+  *)
+    unset LC_ALL
+    if [ "$(uname)" = "Darwin" ]; then export LC_CTYPE=UTF-8; else export LC_CTYPE=C.UTF-8; fi
+    ;;
+esac
+
+name="${1:-}"
+dir="${2:-$PWD}"
+
+if [ -z "$name" ]; then
+  echo "用法：cc <名稱> [資料夾]"
+  echo "目前的 CLI："
+  "$TMUX_BIN" -u ls 2>/dev/null || echo "  （沒有）"
+  exit 1
+fi
+
+# 名稱規則跟 bot 一致：不能有空白、冒號、句點（冒號和句點在 tmux 目標語法裡有特殊意義）
+case "$name" in
+  *[[:space:]]*|*:*|*.*) echo "❌ 名稱不能包含空白、冒號或句點：$name"; exit 1 ;;
+esac
+
+# 用「=名稱」精確比對，避免 cc demo 跑去接上 demo2
+if ! "$TMUX_BIN" -u has-session -t "=$name" 2>/dev/null; then
+  if [ ! -d "$dir" ]; then
+    echo "❌ 資料夾不存在：$dir"
+    exit 1
+  fi
+  "$TMUX_BIN" -u new-session -d -s "$name" -c "$dir" "$CLAUDE_CMD" || { echo "❌ 開啟失敗"; exit 1; }
+  echo "🆕 已開 [$name]（$dir）"
+fi
+
+if [ -n "${TMUX:-}" ]; then
+  "$TMUX_BIN" -u switch-client -t "=$name"   # 已經在 tmux 裡：切換過去
+else
+  "$TMUX_BIN" -u attach -t "=$name"          # 不在 tmux 裡：接上畫面
+fi

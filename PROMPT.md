@@ -32,6 +32,9 @@
 | 怎麼控制 CLI | **所有被管的 CLI 都跑在 tmux 裡** | 一般終端機視窗外部讀不到、也打不進去；tmux 可以 `capture-pane` 讀畫面、`paste-buffer` 打字 |
 | 「跑完了沒」怎麼判斷 | **Claude Code 的 Stop hook**（主要），**Notification hook** 判斷「在等我確認」，讀畫面當備援 | 只靠畫面猜不可靠 |
 | 語言與作業系統 | Python 3、macOS（Homebrew 的 tmux） | — |
+| 大腦的實作 | **`claude -p`，用我的 Claude 訂閱登入**（2026-10 定案） | Agent SDK 依官方文件必須用 API key、另外計費；`claude -p` 可以用訂閱，並用 `--tools ""` 關掉所有內建工具 |
+| 轉貼「原話」 | 我說話後由大腦判斷要不要轉貼、轉給誰，但**送進 CLI 的必須是我的原文**，不能是大腦改寫的版本（2026-10 定案） | 避免大腦改寫後意思走樣。大腦只指出要轉貼哪一段，bot 驗證那段是原訊息的子字串才送出，對不上就先問我 |
+| 機器配置 | 被控制的是 **Mac 桌機**（bot 裝在這台）；我用筆電或手機上的 Telegram 操作 | 多台互傳資料與集中管理留到 Phase 5 |
 
 **之後才做（現在不做）：** 多台電腦集中管理（一個中央 bot＋Tailscale＋SSH 控制各台）。設計時請保留擴充空間，例如把 tmux 操作集中在一個模組裡，之後只要改成 `ssh 機器 tmux …`；但現在不要實作。
 
@@ -110,6 +113,7 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 ```
 
 ### 大腦的實作
+- **已定案：用 `claude -p`（訂閱登入）**，查證細節見 `docs/research-notes.md`。以下是原本的評估說明，保留作紀錄。
 - 優先評估 **Claude Agent SDK（Python）**，把上面的工具註冊成自訂工具。實作前請查官方文件，確認能否用我的 Claude 訂閱登入、還是需要 API key，並在 README 寫清楚。
 - 如果 SDK 不適合，替代方案是 `claude -p --output-format json` 加上工具描述，由 bot 解析大腦回傳的 JSON 動作後自己執行。兩者擇一，並說明理由。
 - **禁止**讓大腦擁有不受限的 Bash 權限；它只能呼叫工具層。
@@ -136,11 +140,11 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 請**依序**完成，每完成一個 Phase 就 commit 一次（commit 訊息用繁體中文），並在本節把 `[ ]` 改成 `[x]`。
 
 ### Phase 0：專案骨架
-- [ ] 建立 `src/zuebot/`，把 v0 的程式搬進來並拆成模組：`tmux_ops.py`（所有 tmux 操作）、`state.py`、`events.py`、`bot.py`（Telegram handlers）、`hook.py`
-- [ ] `requirements.txt`、`.env.example`、`.gitignore`
-- [ ] `bin/cc` 腳本、`config/claude_settings_hooks.json`
-- [ ] 啟動方式：`python -m zuebot`（自動讀 `.env`）
-- [ ] 保留 `reference/v0/` 不動，當作對照
+- [x] 建立 `src/zuebot/`，把 v0 的程式搬進來並拆成模組：`tmux_ops.py`（所有 tmux 操作）、`state.py`、`events.py`、`bot.py`（Telegram handlers）、`hook.py`
+- [x] `requirements.txt`、`.env.example`、`.gitignore`
+- [x] `bin/cc` 腳本、`config/claude_settings_hooks.json`
+- [x] 啟動方式：`python -m zuebot`（自動讀 `.env`）
+- [x] 保留 `reference/v0/` 不動，當作對照
 
 ### Phase 1：在 Mac 上用真的 claude 驗證 v0 功能
 - [ ] 寫一份 `docs/mac-setup.md`：安裝 Homebrew／tmux／Python venv、建 bot、取得 user id、合併 hooks 設定、啟動、防止睡眠
@@ -148,11 +152,12 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 - [ ] 查證 Stop／Notification hook 的實際輸入欄位，修正 `hook.py`；若 Stop 當下 transcript 還沒寫完，要加短暫重試
 - [ ] 驗證 bracketed paste 在 Claude Code TUI 的行為（單行、多行、中文、很長的文字），必要時調整等待時間或改用其他送字方式
 - [ ] 處理「信任此資料夾」提示：`new_cli` 要偵測到這個畫面並告訴我，而不是卡住
-- [ ] 加入 `--debug` 模式，把每個 tmux 指令和 hook 事件印到 log
+- [x] 加入 `--debug` 模式，把每個 tmux 指令和 hook 事件印到 log
 
 ### Phase 2：自然語言大腦
 - [ ] 實作工具層（第 5 節），每個工具都要驗證參數
 - [ ] 接上大腦（Agent SDK 或 `claude -p`，見第 5 節），非斜線開頭的訊息交給大腦處理
+- [ ] 原話轉貼：大腦判斷要轉貼時只回傳「哪一段、給誰」，bot 驗證是原訊息的子字串才原文送出（見第 2 節）
 - [ ] 支援「目前對象」：如果我已經 `/use` 某個 CLI，「直接傳話給它」和「問大腦」要能區分（建議：預設交給大腦；以 `>` 開頭的訊息直接原文送進目前對象）
 - [ ] 歧義處理：候選多於一個時列出選項讓我選（inline 按鈕）
 - [ ] 進度摘要與完成回報改由大腦產生（第 4 節的品質要求）

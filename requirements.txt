@@ -1,0 +1,3 @@
+# bot 唯一需要的第三方套件（需要 Python 3.10 以上）
+# hook.py 只用標準函式庫，不需要安裝任何東西
+python-telegram-bot>=22.0,<23

@@ -1,0 +1,19 @@
+# 機密設定
+.env
+
+# bot 的狀態與事件檔（預設在 ~/.zuebot，這裡是防止有人把資料夾設在專案裡）
+bot_state.json*
+events.jsonl*
+.zuebot/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# macOS
+.DS_Store
