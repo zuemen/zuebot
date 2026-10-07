@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ~/claude-tg/hook.py" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python3 ~/claude-tg/hook.py" }
+        ]
+      }
+    ]
+  }
+}

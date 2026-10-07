@@ -1,0 +1,20 @@
+#!/bin/bash
+# cc —— 用 tmux 開一個 Claude CLI，讓 bot 管得到它
+# 用法：cc <名稱> [資料夾]
+#   cc 競賽 ~/projects/chainlens   → 開新的並進入畫面
+#   cc 競賽                        → 已存在就直接回到那個畫面
+# 離開畫面但讓它繼續跑：按 Ctrl-b 再按 d
+
+name="$1"
+dir="${2:-$PWD}"
+if [ -z "$name" ]; then
+  echo "用法：cc <名稱> [資料夾]"; tmux ls 2>/dev/null; exit 1
+fi
+if ! tmux has-session -t "=$name" 2>/dev/null; then
+  tmux new-session -d -s "$name" -c "$dir" claude
+fi
+if [ -n "$TMUX" ]; then
+  tmux switch-client -t "=$name"
+else
+  tmux attach -t "=$name"
+fi
