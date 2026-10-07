@@ -43,7 +43,7 @@
 |---|---|
 | `tmux_bot.py` | 指令版 Telegram bot：`/list` `/use` `/look` `/send` `/paste` `/watch` `/unwatch` `/key` `/new` `/kill`，直接打字會送進「目前對象」 |
 | `hook.py` | Stop／Notification hook：用 `TMUX_PANE` 環境變數反查是哪個 tmux session，Stop 時抓最後一則回覆，寫入 `~/.claude-tg/events.jsonl` |
-| `cc` | `cc <名稱> [資料夾]`：用 tmux 一行開好一個 CLI |
+| `zc` | `zc <名稱> [資料夾]`（取名 zc 是為了不蓋掉 C 編譯器 `cc`）：用 tmux 一行開好一個 CLI |
 | `claude_settings_hooks.json` | 要併進 `~/.claude/settings.json` 的 hooks 設定 |
 
 **已驗證：** 在 Linux 上用真的 tmux 加上一個模擬的 CLI 跑過一輪：貼上訊息、讀畫面、hook 寫事件、bot 讀到事件後送出「✅ 這輪完成」通知，全部正常。
@@ -138,7 +138,7 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 ### Phase 0：專案骨架
 - [ ] 建立 `src/zuebot/`，把 v0 的程式搬進來並拆成模組：`tmux_ops.py`（所有 tmux 操作）、`state.py`、`events.py`、`bot.py`（Telegram handlers）、`hook.py`
 - [ ] `requirements.txt`、`.env.example`、`.gitignore`
-- [ ] `bin/cc` 腳本、`config/claude_settings_hooks.json`
+- [ ] `bin/zc` 腳本、`config/claude_settings_hooks.json`
 - [ ] 啟動方式：`python -m zuebot`（自動讀 `.env`）
 - [ ] 保留 `reference/v0/` 不動，當作對照
 
@@ -198,7 +198,7 @@ tmux（集中在單一模組，之後可換成 ssh 遠端執行）
 
 ## 10. 最終驗收測試
 
-1. 在 Mac 上 `cc 測試 ~/projects/demo` 開一個 CLI，在 Telegram 說「現在有哪些 CLI」，能看到「測試」。
+1. 在 Mac 上 `zc 測試 ~/projects/demo` 開一個 CLI，在 Telegram 說「現在有哪些 CLI」，能看到「測試」。
 2. 說「測試那個在幹嘛」，得到摘要，而不是原始畫面。
 3. 說「幫我貼上接下來這段訊息」，再傳一段**多行**文字，CLI 收到完整內容且只送出一次。
 4. 說「關注測試那個，結束跟我說」，CLI 完成後 10 秒內收到完成回報，內容是摘要。

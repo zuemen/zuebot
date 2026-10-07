@@ -143,7 +143,7 @@ async def cmd_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
     sessions = list_sessions()
     if not sessions:
-        await update.message.reply_text("目前沒有 tmux session。用 /new 開一個，或在電腦上用 cc 腳本開。")
+        await update.message.reply_text("目前沒有 tmux session。用 /new 開一個，或在電腦上用 zc 腳本開。")
         return
     cur = state["current"].get(str(update.effective_chat.id))
     lines = []
