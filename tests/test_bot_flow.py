@@ -312,6 +312,40 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         await self.fire_stop("競賽", "這則不該通知")
         self.assertEqual(len(self.tg.sent), before)
 
+    async def wait_for_text(self, needle, seconds=8):
+        """等待某段文字出現在送出的訊息裡。"""
+        for _ in range(int(seconds * 10)):
+            if any(needle in m for m in self.tg.texts()):
+                return
+            await asyncio.sleep(0.1)
+        self.fail(f"等不到「{needle}」，訊息：{self.tg.texts()}")
+
+    async def test_permission_buttons(self):
+        """權限確認：🔔 通知＋依畫面選項產生的按鈕；按了才送鍵；畫面變了就不送。"""
+        await self.open_cli("競賽")
+        self.zb.monitor.reader.read_new()
+        self.zb.state.watch("競賽", USER)
+        await tmux_ops.paste_text("競賽", "請執行 ASKPERM")
+        await asyncio.sleep(0.5)
+        pane = next(s.pane_id for s in await tmux_ops.list_sessions() if s.name == "競賽")
+        with self.cfg.events_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"event": "PermissionRequest", "pane": pane, "tool_name": "Bash",
+                                "tool_input": {"command": "echo hi"}}) + "\n")
+            f.write(json.dumps({"event": "Notification", "pane": pane, "notification_type": "permission_prompt",
+                                "message": "Claude needs your permission"}) + "\n")
+        await self.zb.monitor.tick()
+        await self.wait_for_text("🔔 [競賽] 在等你確認")
+        await asyncio.sleep(1.5)       # 等 Notification 那一則也處理完
+        self.assertEqual(sum("🔔 [競賽] 在等你確認" in m for m in self.tg.texts()), 1)   # 同一個畫面只通知一次
+        self.assertTrue(any("它想使用 Bash" in m for m in self.tg.texts()))
+        self.assertNotIn("權限回答", await self.screen("競賽"))       # 還沒按，不會送
+        await self.press("1. Yes")
+        await asyncio.sleep(0.5)
+        self.assertIn("權限回答：'1'", await self.screen("競賽"))
+        # 同一則通知上的另一個按鈕已失效；就算畫面變了也不會亂送
+        result = await self.zb.monitor.answer_permission("競賽", USER, "esc", "拒絕")
+        self.assertIn("已經不是權限確認畫面", result)
+
     async def test_new_cli_outside_root_rejected(self):
         """new_cli 只能在 ALLOWED_ROOT 底下。"""
         self.brain_says({"reply": "", "done": True,

@@ -21,6 +21,20 @@ def show_prompt():
     print("│ > ", end="", flush=True)
 
 
+def read_key():
+    """像真的 claude 一樣：選單上按一個鍵就生效，不用按 Enter。Esc 顯示成 'esc'。"""
+    import termios
+    import tty
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        ch = os.read(fd, 1).decode("utf-8", "replace")
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return "esc" if ch == "\x1b" else ch
+
+
 def fire_hook(event):
     """模擬 Claude Code 執行 hook。"""
     hook = os.environ.get("FAKE_HOOK")
@@ -44,7 +58,7 @@ for line in sys.stdin:
     print(f"● 收到：{line}", flush=True)
     if "ASKPERM" in line:
         print("Bash command\n  echo hi\nDo you want to proceed?\n❯ 1. Yes\n  2. Yes, and don't ask again\n  3. No (esc)", flush=True)
-        answer = sys.stdin.readline().strip()
+        answer = read_key()
         print(f"● 權限回答：{answer!r}", flush=True)
     fire_hook({"hook_event_name": "Stop", "last_assistant_message": f"已處理：{line}"})
     show_prompt()

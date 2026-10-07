@@ -150,6 +150,23 @@ def text_still_in_input(screen: str, text: str) -> bool:
     return bool(first) and first[:12] in box
 
 
+_MENU_OPTION_RE = re.compile(r"^\s*(?:[│|]\s*)?(?:[❯>]\s*)?([1-9])\.\s+(.+?)\s*(?:[│|]\s*)?$")
+
+
+def menu_options(screen_text: str) -> list[tuple[str, str]]:
+    """
+    讀出畫面最下方選單的選項，例如 [("1", "Yes"), ("2", "Yes, and don't ask again …"), ("3", "No …")]。
+    用來產生 Telegram 上的按鈕，讓按鈕文字跟電腦上看到的一樣。讀不到就回傳空清單。
+    """
+    rows = [r for r in screen_text.splitlines() if r.strip()][-15:]
+    options: list[tuple[str, str]] = []
+    for row in rows:
+        m = _MENU_OPTION_RE.match(row)
+        if m and m.group(1) not in {k for k, _ in options}:
+            options.append((m.group(1), m.group(2).strip()))
+    return options
+
+
 def is_shell(command: str) -> bool:
     """前景程式是 shell 代表 claude 已經結束，只剩下終端機。"""
     return command.strip().lower() in SHELLS
