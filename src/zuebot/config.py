@@ -37,6 +37,19 @@ class Config:
     data_dir: Path                    # 狀態檔、事件檔放這裡
     events_file: Path                 # hook 寫入、bot 讀取的事件檔
     state_file: Path                  # bot 狀態存檔
+    # ── 大腦（claude -p）──
+    brain_enabled: bool = True        # 關掉的話，一般文字會像 v0 一樣直接送進目前對象
+    brain_cmd: str = "claude"         # 大腦用的 claude 指令（預設跟 CLAUDE_CMD 相同）
+    brain_model: str = "sonnet"       # 理解口語、決定動作用的模型
+    summary_model: str = "haiku"      # 摘要完成回報用的模型（要快，才能在 10 秒內回報）
+    brain_timeout: float = 120        # 大腦最多等幾秒
+    # ── 安全 ──
+    confirm_timeout: float = 60       # 確認按鈕幾秒內沒按就自動取消
+    permission_button_timeout: float = 600   # 權限通知上的「允許／拒絕」按鈕有效時間
+    extra_danger_words: tuple[str, ...] = ()  # 自訂的危險字眼（加在內建清單之外）
+    # ── 穩定性 ──
+    fallback_idle_check: bool = True  # 沒收到 hook 事件時，用讀畫面的方式判斷是否閒置
+    startup_notify: bool = True       # bot 啟動時通知你
 
 
 def _parse_env_line(line: str) -> tuple[str, str] | None:
@@ -96,6 +109,32 @@ def load_dotenv(path: str | Path | None = None) -> Path | None:
     return None
 
 
+def _env_bool(key: str, default: bool) -> bool:
+    """讀取開關型設定：1/true/yes/on 為開，0/false/no/off 為關，沒設定就用預設值。"""
+    raw = os.environ.get(key, "").strip().lower()
+    if not raw:
+        return default
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ConfigError(f"{key} 只能填 1 或 0，現在是「{raw}」")
+
+
+def _env_float(key: str, default: float) -> float:
+    """讀取數字型設定（秒數），格式錯誤時給出清楚的說明。"""
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ConfigError(f"{key} 必須是數字，現在是「{raw}」") from None
+    if value <= 0:
+        raise ConfigError(f"{key} 必須大於 0")
+    return value
+
+
 def _parse_user_ids(raw: str) -> frozenset[int]:
     """把 "123,456" 轉成 {123, 456}；有非數字就丟出 ConfigError 說明哪一個錯了。"""
     ids = set()
@@ -133,4 +172,14 @@ def load_config(require_token: bool = True) -> Config:
         data_dir=data_dir,
         events_file=events_file,
         state_file=data_dir / "bot_state.json",
+        brain_enabled=_env_bool("BRAIN_ENABLED", True),
+        brain_cmd=os.environ.get("BRAIN_CMD", "").strip() or os.environ.get("CLAUDE_CMD", "claude").strip() or "claude",
+        brain_model=os.environ.get("BRAIN_MODEL", "sonnet").strip(),
+        summary_model=os.environ.get("SUMMARY_MODEL", "haiku").strip(),
+        brain_timeout=_env_float("BRAIN_TIMEOUT", 120),
+        confirm_timeout=_env_float("CONFIRM_TIMEOUT", 60),
+        permission_button_timeout=_env_float("PERMISSION_BUTTON_TIMEOUT", 600),
+        extra_danger_words=tuple(w.strip() for w in os.environ.get("DANGER_WORDS", "").split(",") if w.strip()),
+        fallback_idle_check=_env_bool("FALLBACK_IDLE_CHECK", True),
+        startup_notify=_env_bool("STARTUP_NOTIFY", True),
     )

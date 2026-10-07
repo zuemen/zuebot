@@ -1,18 +1,14 @@
 {
+  "_說明": "建議用 python -m zuebot.setup_hooks 自動安裝（會用完整路徑）。手動安裝時把下面的路徑換成你電腦上的實際位置。",
   "hooks": {
     "Stop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 }
-        ]
-      }
+      { "hooks": [ { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 } ] }
     ],
     "Notification": [
-      {
-        "hooks": [
-          { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 }
-        ]
-      }
+      { "hooks": [ { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 } ] }
+    ],
+    "PermissionRequest": [
+      { "hooks": [ { "type": "command", "command": "python3 ~/zuebot/src/zuebot/hook.py", "timeout": 10 } ] }
     ]
   }
 }

@@ -57,7 +57,7 @@ class TestBot(unittest.IsolatedAsyncioTestCase):
             zb = bot.ZueBot(make_config(d), State(Path(d) / "state.json"))
             msg = FakeMessage("/list")
             update = SimpleNamespace(effective_user=SimpleNamespace(id=999), effective_message=msg,
-                                     effective_chat=SimpleNamespace(id=999))
+                                     effective_chat=SimpleNamespace(id=999), callback_query=None)
             await zb.cmd_list(update, SimpleNamespace(args=[]))
             self.assertEqual(msg.replies, ["未授權。你的 user id 是 999"])
 

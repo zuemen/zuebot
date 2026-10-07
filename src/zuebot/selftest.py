@@ -258,12 +258,29 @@ async def test_brain(cfg: config.Config, rep: Report) -> None:
     except ImportError:
         rep.add("ℹ️", "還沒有大腦模組，略過")
         return
+    b = brain.Brain(cfg)
     start = time.time()
     try:
-        text = await brain.Brain(cfg).ping()
-        rep.add("✅", f"大腦有回應（{time.time() - start:.1f} 秒）：{text[:60]}")
+        text = await b.ping()
+        rep.add("✅", f"摘要模型（{cfg.summary_model}）有回應（{time.time() - start:.1f} 秒）：{text[:60]}")
     except brain.BrainError as e:
         rep.add("❌", f"大腦呼叫失敗：{e}")
+        return
+    start = time.time()
+    context = {"clis": [{"name": "競賽", "path": "/Users/me/projects/contest", "state": "執行中", "watched": False},
+                        {"name": "medssi", "path": "/Users/me/projects/medssi", "state": "閒置（等你輸入）", "watched": True}],
+               "current": None}
+    try:
+        plan = await b.plan("跟競賽那個說改用 v2 資料集，結束跟我說", context, [], [])
+    except brain.BrainError as e:
+        rep.add("❌", f"大腦（{cfg.brain_model}）產生計畫失敗：{e}")
+        return
+    rep.add("ℹ️", f"大腦（{cfg.brain_model}）花了 {time.time() - start:.1f} 秒，格式來源：{b.last_mode}")
+    sends = [a for a in plan.actions if a.get("tool") == "send_text"]
+    if sends and sends[0].get("name") == "競賽" and sends[0].get("text", "").strip() == "改用 v2 資料集":
+        rep.add("✅", "大腦正確理解「轉貼原話」：send_text 競賽「改用 v2 資料集」")
+    else:
+        rep.add("⚠️", f"大腦的計畫跟預期不同（不影響安全，bot 仍會檢查原話）：{plan.actions}")
 
 
 async def main_async(args: argparse.Namespace) -> int:
