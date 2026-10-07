@@ -149,7 +149,7 @@ async def start_cli(cfg: config.Config, rep: Report, auto_yes: bool) -> str | No
     workdir.mkdir(parents=True, exist_ok=True)
     if await tmux_ops.session_exists(SESSION):
         await tmux_ops.kill_session(SESSION)
-    await tmux_ops.new_session(SESSION, str(workdir), cfg.claude_cmd)
+    await tmux_ops.new_session(SESSION, str(workdir), cli.claude_command(cfg.claude_cmd))
     pane = next((s.pane_id for s in await tmux_ops.list_sessions() if s.name == SESSION), "")
     rep.add("✅", f"已開 tmux session「{SESSION}」（pane {pane}），資料夾 {workdir}")
 
@@ -157,7 +157,11 @@ async def start_cli(cfg: config.Config, rep: Report, auto_yes: bool) -> str | No
     rep.screen("啟動後的畫面", text)
     if state == screen.TRUST:
         rep.add("✅", "偵測到「信任資料夾」提示（bot 開新 CLI 時會用按鈕問你）")
-        answer = "y" if auto_yes else input("要信任這個測試資料夾並繼續嗎？[Y/n] ").strip().lower()
+        try:
+            answer = "y" if auto_yes else input("要信任這個測試資料夾並繼續嗎？[Y/n] ").strip().lower()
+        except EOFError:
+            rep.add("❌", "沒辦法問你（不是在互動式終端機執行）。請加上 --yes 重新執行")
+            return None
         if answer not in ("", "y", "yes"):
             rep.add("⚠️", "你選擇不信任，後面的測試略過")
             return None

@@ -340,7 +340,7 @@ class ToolBox:
 
         async def do() -> str:
             cwd.mkdir(parents=True, exist_ok=True)
-            await tmux_ops.new_session(name, str(cwd), self.cfg.claude_cmd)
+            await tmux_ops.new_session(name, str(cwd), cli.claude_command(self.cfg.claude_cmd))
             self.state.set_current(chat_id, name)
             self.state.watch(name, chat_id)
             self.spawn(self._startup(name, chat_id, first_prompt, cwd))

@@ -80,6 +80,9 @@ def _utf8_env() -> dict[str, str]:
     而且由 bot 開的新 session 會繼承這份環境，裡面的 claude 也需要 UTF-8 才能正確處理中文。
     """
     env = dict(os.environ)
+    # 如果這個 tmux 指令會「啟動 tmux server」，server 會記住這份環境並傳給之後開的每個 CLI。
+    # 在 Claude Code 裡執行 bot 時，這個變數會讓新開的 claude 以為自己是巢狀執行而拒絕啟動，所以拿掉。
+    env.pop("CLAUDECODE", None)
     current = (env.get("LC_ALL") or env.get("LC_CTYPE") or env.get("LANG") or "").upper()
     if "UTF-8" not in current and "UTF8" not in current:
         env.pop("LC_ALL", None)   # LC_ALL 優先權最高，如果它是非 UTF-8 的值會蓋掉 LC_CTYPE

@@ -57,3 +57,10 @@
 
 - 系統內建的 `python3` 是 3.9，而且 hook 是由 claude 用它執行的 → hook.py 必須相容 3.9、只用標準函式庫。bot 本身要用 Homebrew 的 Python 3.10 以上。
 - launchd 和非互動式 SSH 的 PATH 裡沒有 `/opt/homebrew/bin` → `.env` 的 `TMUX_BIN` 要填完整路徑。
+
+## 7. 實作時另外發現的事（2026-10）
+
+- **`claude -p --bare` 不能用：** `claude --help` 寫明 `--bare` 會跳過讀取鑰匙圈（keychain），macOS 上的訂閱登入就讀不到了。所以大腦改用 `--tools ""`、`--strict-mcp-config`、`--disable-slash-commands`、`--no-session-persistence` 這幾個參數來限制。
+- **巢狀執行偵測：** Claude Code 會在它開出來的程式裡設定 `CLAUDECODE` 等環境變數。在 Claude Code 裡執行 `cc`、bot 或 selftest 時，新開的 claude 會繼承這些變數，可能以為自己是巢狀執行而拒絕啟動。所以開 CLI 時一律用 `env -u CLAUDECODE …` 清掉，tmux_ops 的環境也會拿掉它。
+- **補按 Enter 的陷阱：** 送字後如果畫面已經變成權限選單，這時「補按 Enter」就等於選了「1. Yes」。所以只有在畫面是「閒置等輸入」時才補按，並加了回歸測試。
+- **`--json-schema` 搭配 `--tools ""`：** 還沒在實機上確認 `structured_output` 一定會出現。brain.py 兩種情況都處理：沒有 `structured_output` 時，就從 `result` 文字裡解析 JSON。selftest 會記錄實際是用哪一種。

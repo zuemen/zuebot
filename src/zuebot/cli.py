@@ -30,6 +30,17 @@ STARTUP_TIMEOUT = 45      # 開新 CLI 時最多等幾秒讓 claude 啟動
 STARTUP_POLL = 1.0        # 啟動期間每幾秒看一次畫面
 
 
+# Claude Code 會在它開出來的程式裡設定這些環境變數；新版偵測到 CLAUDECODE 會以為自己被開在另一個
+# Claude Code 裡而拒絕啟動。你在 Claude Code 裡執行 selftest 或 bot 時，開出來的 CLI 會繼承它們，所以要清掉。
+NESTED_ENV_VARS = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID")
+
+
+def claude_command(base: str) -> str:
+    """組出在 tmux 裡啟動 claude 的指令：先用 env -u 清掉會被誤判成「巢狀執行」的變數。"""
+    unset = " ".join(f"-u {name}" for name in NESTED_ENV_VARS)
+    return f"env {unset} {base}"
+
+
 async def get_state(name: str, lines: int = 40) -> tuple[str, str]:
     """讀畫面並判斷狀態，回傳 (狀態, 畫面文字)。"""
     text = await tmux_ops.capture(name, lines)

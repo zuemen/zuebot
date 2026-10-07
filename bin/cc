@@ -42,7 +42,8 @@ if ! "$TMUX_BIN" -u has-session -t "=$name" 2>/dev/null; then
     echo "❌ 資料夾不存在：$dir"
     exit 1
   fi
-  "$TMUX_BIN" -u new-session -d -s "$name" -c "$dir" "$CLAUDE_CMD" || { echo "❌ 開啟失敗"; exit 1; }
+  # env -u：清掉 Claude Code 的環境變數，避免在 Claude Code 裡執行 cc 時，新的 claude 以為自己是巢狀執行而拒絕啟動
+  "$TMUX_BIN" -u new-session -d -s "$name" -c "$dir" "env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ID $CLAUDE_CMD" || { echo "❌ 開啟失敗"; exit 1; }
   echo "🆕 已開 [$name]（$dir）"
 fi
 
