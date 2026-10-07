@@ -38,7 +38,7 @@ from typing import Any, Awaitable, Callable
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from telegram.error import TelegramError
+from telegram.error import Conflict, NetworkError, TelegramError, TimedOut
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler,
                           filters)
 
@@ -56,6 +56,7 @@ CHOICE_TIMEOUT = 120        # 「選哪一個」按鈕的有效時間
 RAW_BUTTON_TIMEOUT = 86400  # 「📄 原文」按鈕保留一天
 MAX_BRAIN_ROUNDS = 3        # 大腦最多來回幾輪（看畫面 → 再決定）
 HISTORY_TURNS = 8           # 給大腦參考的最近對話則數
+ALERT_INTERVAL = 300        # 同一類錯誤幾秒內只通知一次，避免洗版
 
 HELP = (__doc__ or "").split("用口語說就好", 1)[1].strip()
 HELP = "用口語說就好" + HELP
@@ -124,7 +125,8 @@ class ZueBot:
         self.app: Application | None = None
         self.toolbox = ToolBox(cfg, state, self)
         self.brain = Brain(cfg)
-        self.monitor = Monitor(cfg, state, self.toolbox, self.brain, self)
+        self.monitor = Monitor(cfg, state, self.toolbox, self.brain, self, on_error=self.alert)
+        self._last_alert: dict[str, float] = {}
         self.buttons: dict[str, ButtonSet] = {}
         self.locks: dict[int, asyncio.Lock] = collections.defaultdict(asyncio.Lock)
         self.history: dict[int, collections.deque] = collections.defaultdict(
@@ -438,14 +440,53 @@ class ZueBot:
         if not plan.reply and not executed:
             await self.notify(chat_id, "🤔 我不太確定你要我做什麼，可以再說清楚一點嗎？")
 
+    # ───────────── 錯誤通知（PROMPT.md Phase 4：bot 不能默默掛掉）─────────────
+    async def alert(self, text: str, key: str | None = None) -> None:
+        """
+        把系統層級的問題用一句人話通知所有白名單使用者。
+        同一類（key）的錯誤 ALERT_INTERVAL 秒內只通知一次；通知本身失敗也不會再丟錯。
+        """
+        key = key or text[:40]
+        now = time.time()
+        if now - self._last_alert.get(key, 0) < ALERT_INTERVAL:
+            return
+        self._last_alert[key] = now
+        for uid in self.cfg.allowed_user_ids:
+            try:
+                await self.notify(uid, f"⚠️ {text}")
+            except Exception:
+                log.warning("錯誤通知送不出去", exc_info=True)
+
+    async def on_error(self, update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        """全域錯誤處理：記到 log，並視情況通知你。網路暫時斷線只記 log（python-telegram-bot 會自己重試）。"""
+        err = ctx.error
+        if isinstance(err, Conflict):
+            log.error("409 Conflict：同一個 token 有另一個程式在收訊息")
+            await self.alert("同一個 bot token 有另一個程式也在收訊息（409 Conflict）。"
+                             "可能是手動開了一個、launchd 又開了一個，請關掉其中一個。", key="conflict")
+            return
+        if isinstance(err, (NetworkError, TimedOut)):
+            log.warning("網路暫時有問題：%s", err)
+            return
+        log.error("處理更新時發生錯誤", exc_info=err)
+        await self.alert(f"zuebot 遇到未預期的錯誤：{type(err).__name__}: {err}。bot 還在運作；"
+                         f"如果一直出現，請看 ~/.zuebot/logs/bot.log", key=type(err).__name__)
+
     # ───────────── 生命週期 ─────────────
     async def post_init(self, app: Application) -> None:
-        """bot 連上 Telegram 後執行：設定指令選單、啟動背景監控。"""
+        """bot 連上 Telegram 後執行：設定指令選單、啟動背景監控、通知你 bot 已啟動。"""
         try:
             await app.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
         except TelegramError:
             log.warning("設定指令選單失敗（不影響使用）", exc_info=True)
         self._monitor_task = asyncio.create_task(self.monitor.run())
+        if self.cfg.startup_notify:
+            watching = "、".join(self.state.watches) or "（沒有）"
+            for uid in self.cfg.allowed_user_ids:
+                try:
+                    await self.notify(uid, f"🤖 zuebot 已啟動。關注中：{watching}\n傳「現在有哪些 CLI？」或 /help 開始。")
+                except TelegramError:
+                    log.warning("啟動通知送不出去（可能你還沒對 bot 按過開始）", exc_info=True)
 
     async def post_shutdown(self, app: Application) -> None:
         """bot 關閉時執行：停止背景監控、存檔。"""
@@ -456,10 +497,6 @@ class ZueBot:
             except (asyncio.CancelledError, Exception):
                 pass
         self.state.save()
-
-    async def on_error(self, update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-        """全域錯誤處理：記到 log。"""
-        log.error("處理更新時發生錯誤", exc_info=ctx.error)
 
     def build_application(self) -> Application:
         """建立 Telegram Application 並註冊所有指令與按鈕處理。"""

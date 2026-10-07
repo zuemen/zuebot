@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  zuebot 的 launchd 設定範本（macOS 開機登入後自動啟動、掛掉自動重開）。
+  不要手動修改：執行 ./scripts/install_launchd.sh 會自動把 __ROOT__ 等佔位文字換成實際路徑，
+  並安裝到 ~/Library/LaunchAgents/com.zuebot.bot.plist。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.zuebot.bot</string>
+
+  <!-- caffeinate -i：bot 執行期間防止系統睡眠（螢幕仍可關閉） -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-i</string>
+    <string>__PYTHON__</string>
+    <string>-m</string>
+    <string>zuebot</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__ROOT__</string>
+
+  <!-- launchd 沒有你終端機的 PATH 和語系設定，這裡補上（UTF-8 才能正確處理中文 session 名稱） -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>LC_CTYPE</key>
+    <string>UTF-8</string>
+    <key>ZUEBOT_ENV_FILE</key>
+    <string>__ROOT__/.env</string>
+  </dict>
+
+  <!-- 登入後立刻啟動；不管怎麼結束都自動重開（間隔至少 30 秒，避免設定錯誤時狂重開） -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- 一般 log 由程式自己寫到 ~/.zuebot/logs/bot.log（會自動輪替）；這裡只收當機時的錯誤訊息 -->
+  <key>StandardOutPath</key>
+  <string>__LOGDIR__/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOGDIR__/launchd.err.log</string>
+</dict>
+</plist>

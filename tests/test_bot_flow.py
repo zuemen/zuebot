@@ -346,6 +346,53 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         result = await self.zb.monitor.answer_permission("競賽", USER, "esc", "拒絕")
         self.assertIn("已經不是權限確認畫面", result)
 
+    async def test_session_closed_manually(self):
+        """關注中的 session 被手動關掉 → 自動從關注清單移除，只通知一次。"""
+        await self.open_cli("競賽")
+        self.zb.state.watch("競賽", USER)
+        await tmux_ops.kill_session("競賽")
+        await self.zb.monitor.check_sessions()
+        await self.zb.monitor.check_sessions()
+        self.assertIsNone(self.zb.state.watcher("競賽"))
+        self.assertEqual(sum("已經被關掉了" in m for m in self.tg.texts()), 1)
+
+    async def test_fallback_idle_without_hook(self):
+        """沒有 hook 事件時：畫面連續沒變且在等輸入 → 視為完成並回報（附上說明）。"""
+        from zuebot import monitor as monitor_mod
+        await self.open_cli("競賽")
+        self.zb.state.watch("競賽", USER)
+        self.zb.toolbox.awaiting["競賽"] = 0          # 很久以前送出的訊息，一直沒收到 Stop
+        self.brain_says("競賽那個看起來已經做完，正在等你下一步。")
+        for _ in range(monitor_mod.FALLBACK_SAME_TIMES + 1):
+            await self.zb.monitor.fallback_idle()
+        await self.wait_for_text("沒有收到 hook 通知")
+        self.assertNotIn("競賽", self.zb.toolbox.awaiting)
+
+    async def test_paste_timeout_reminder(self):
+        """「貼上下一則」逾時 → 通知你一次，之後的訊息不會被貼上。"""
+        from zuebot import tools as tools_mod
+        await self.open_cli("競賽")
+        old, tools_mod.PASTE_TIMEOUT = tools_mod.PASTE_TIMEOUT, 0.3
+        try:
+            await self.zb.toolbox.arm_paste("競賽", USER)
+            await self.wait_for_text("已經過了 5 分鐘")
+            self.assertEqual(self.zb.toolbox.take_paste(USER), (None, False))
+        finally:
+            tools_mod.PASTE_TIMEOUT = old
+
+    async def test_restart_keeps_watches(self):
+        """重開 bot：關注清單與目前對象都還在，啟動通知會列出關注中的 CLI。"""
+        self.zb.state.watch("競賽", USER)
+        self.zb.state.set_current(USER, "競賽")
+        restarted = ZueBot(self.cfg, State.load(self.cfg.state_file))
+        tg = FakeTelegram()
+        restarted.app = SimpleNamespace(bot=tg)
+        await restarted.post_init(SimpleNamespace(bot=tg))
+        await restarted.post_shutdown(None)
+        self.assertEqual(restarted.state.watcher("競賽"), USER)
+        self.assertEqual(restarted.state.get_current(USER), "競賽")
+        self.assertTrue(any("zuebot 已啟動" in m and "競賽" in m for m in tg.texts()))
+
     async def test_new_cli_outside_root_rejected(self):
         """new_cli 只能在 ALLOWED_ROOT 底下。"""
         self.brain_says({"reply": "", "done": True,

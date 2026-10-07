@@ -14,16 +14,30 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from . import config, tmux_ops
 
 
-def setup_logging(debug: bool) -> None:
-    """設定 log 格式與等級。httpx 每次 polling 都會印一行，太吵，所以調成只印警告。"""
+def setup_logging(debug: bool, log_dir: Path | None = None) -> None:
+    """
+    設定 log：印在終端機，同時寫到 log_dir/bot.log（每個檔最大 2MB，保留 3 個舊檔，不會無限長大）。
+    httpx 每次 polling 都會印一行，太吵，所以調成只印警告。
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if log_dir is not None:
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            handlers.append(RotatingFileHandler(log_dir / "bot.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8"))
+        except OSError:
+            pass
     logging.basicConfig(
         level=logging.DEBUG if debug else logging.INFO,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+        force=True,
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -46,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     except config.ConfigError as e:
         print(f"❌ 設定錯誤：{e}", file=sys.stderr)
         return 1
+    setup_logging(args.debug, cfg.data_dir / "logs")   # 知道資料夾位置後，加上寫檔
     log.info("設定檔：%s", env_file or "（沒有找到 .env，只用環境變數）")
 
     tmux_ops.configure(cfg.tmux_bin)
