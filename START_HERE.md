@@ -78,20 +78,26 @@ cd ~/zuebot && .venv/bin/python -m zuebot
 
 ## 5. 驗收：在 Telegram 試這些（對照 PROMPT.md 第 10 節）
 
-先在 Mac 的終端機開一個測試用 CLI：`mkdir -p ~/projects/demo && cc 測試 ~/projects/demo`。
-進到 claude 畫面後，按 `Ctrl + b` 再按 `d` 離開，它會在背景繼續跑。
+先**關掉所有終端機視窗，重新打開一個**（安裝前就開著的視窗，bot 看不到）。
+之後你開的每個終端機視窗、直接打的每個 `claude`，都會自動跑在 tmux 裡，手機看得到、管得到：
+```bash
+mkdir -p ~/projects/demo && cd ~/projects/demo && claude
+```
+畫面會先出現「📡 zuebot：這個 claude 開在 tmux「demo」裡」，接著就跟平常的 claude 一模一樣。
+想讓它在背景繼續跑：直接關掉視窗，或按 `Ctrl + b` 再按 `d`。回到它：`cc demo`。
 
 | # | 在 Telegram 說 | 應該看到 |
 |---|---|---|
-| 1 | `現在有哪些 CLI？` | 列出「測試」 |
-| 2 | `測試那個在幹嘛？` | 幾句話的摘要，不是一大段終端畫面 |
-| 3 | `幫我貼上接下來這段訊息到測試`，再傳一段**多行**文字 | 「已送到」；CLI 收到完整內容，只送一次 |
-| 4 | `關注測試那個，結束跟我說` | CLI 完成後，10 秒內收到 ✅ 摘要 |
+| 1 | `現在有哪些 CLI？` | 列出「demo」和你開著的終端機視窗（term…） |
+| 2 | `demo 那個在幹嘛？` | 幾句話的摘要，不是一大段終端畫面 |
+| 3 | `幫我貼上接下來這段訊息到 demo`，再傳一段**多行**文字 | 「已送到」；CLI 收到完整內容，只送一次 |
+| 4 | `關注 demo 那個，結束跟我說` | CLI 完成後，10 秒內收到 ✅ 摘要 |
 | 5 | `開一個新的 CLI 在 ~/projects/demo2，幫我建立一個 hello.py` | 問你信任資料夾 → 按同意 → 任務被執行 → 完成時回報 |
 | 6 | CLI 跳出權限確認時 | 收到 🔔 和按鈕；按「✅ 1. Yes」後 CLI 繼續 |
-| 7 | `幫我在測試那個執行 git push --force` | 先跳「⚠️ 需要你確認」，不會直接送出 |
+| 7 | `幫我在 demo 那個執行 git push --force` | 先跳「⚠️ 需要你確認」，不會直接送出 |
 | 8 | 用別人的 Telegram 帳號傳訊息給 bot | 只回「未授權」 |
-| 9 | 再開一個 `cc 測試2`，然後說 `關注測試那個` | 列出「測試／測試2」讓你選 |
+| 9 | 在 `~/projects/demo` 再開一個視窗打 `claude`（會叫 demo-2），然後說 `關注 demo 那個` | 列出「demo／demo-2」讓你選 |
+| + | `在 term 那個終端機執行 ls` | 先跳確認（一般終端機的指令一律確認），按同意後執行，跑完回報 |
 | 10 | 重開機（或 `./scripts/install_launchd.sh --restart`） | 收到「🤖 zuebot 已啟動。關注中：…」 |
 
 有任何一項不對，把現象告訴 Mac 上的 Claude Code，請它對照 `PROMPT.md` 修正。
@@ -102,8 +108,10 @@ cd ~/zuebot && .venv/bin/python -m zuebot
 
 | 在哪裡 | 指令 | 做什麼 |
 |---|---|---|
-| Mac 終端機 | `cc 名稱 資料夾` | 開一個被管理的 claude（`cc 名稱` 回到已經開著的；`cc` 列出全部） |
-| Mac 終端機 | `Ctrl + b` 再按 `d` | 離開 claude 畫面，讓它在背景繼續跑 |
+| Mac 終端機 | 直接打 `claude` | 自動開在 tmux 裡（手機管得到），用法跟平常一樣 |
+| Mac 終端機 | `cc 名稱` | 回到已經開著的 claude（`cc` 列出全部；`cc 名稱 資料夾` 開新的） |
+| Mac 終端機 | `Ctrl + b` 再按 `d`，或直接關掉視窗 | claude 在背景繼續跑 |
+| Mac 終端機 | 選取文字複製 | 按住 `fn`（Terminal）或 `Option`（iTerm2）再拖曳（因為 tmux 開了滑鼠捲動） |
 | Mac 終端機 | `./scripts/install_launchd.sh --status` | 看 bot 有沒有在跑 |
 | Mac 終端機 | `tail -f ~/.zuebot/logs/bot.log` | 看 bot 的即時 log |
 | Telegram | 用口語說就好；`/help` 看說明 | 斜線指令是備用，大腦出問題時一樣能用 |

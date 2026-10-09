@@ -25,11 +25,20 @@ bot（python -m zuebot，launchd 常駐在被控制的 Mac 上）
 tmux 裡的 claude ──（回覆完成／需要確認）──▶ hook.py ──▶ ~/.zuebot/events.jsonl ──▶ bot 通知你
 ```
 
+## 看得到哪些終端？
+
+一般的終端機視窗，外部程式讀不到畫面、也打不進字，所以 bot 只能管理**跑在 tmux 裡**的終端。安裝時會在 `~/.zshrc` 加入 [`shell/zuebot.zsh`](shell/zuebot.zsh)，之後：
+- **直接打 `claude`**：會自動開在 tmux 裡（session 名稱是資料夾名稱），用法跟平常一樣，關掉視窗也會繼續跑。
+- **每個新開的 Terminal／iTerm2 視窗**：會自動在 tmux 裡（名稱是 term、term-2…），手機上看得到它在跑什麼。
+
+安裝前就開著的視窗沒辦法事後接管，要關掉重開。只想讓 claude 被管理的話，在 `~/.zshrc` 那行前面加上 `ZUEBOT_TMUX_EVERY_TERMINAL=0`。
+
 ## 安全設計
 
 - 只有 `ALLOWED_USER_IDS` 能操作，其他人只會收到「未授權」。
 - 大腦用 `claude -p --tools ""` 執行，沒有 Bash 或任何檔案工具，只能透過工具層行動。
 - 以下動作都要你按「✅ 同意」才執行（60 秒沒按自動取消）：
+  - 送進「一般終端機」的任何文字（會被當成指令執行）
   - 送按鍵
   - 關閉 CLI
   - 含有危險字眼（rm、刪除、git push、--force、部署、drop…）的訊息

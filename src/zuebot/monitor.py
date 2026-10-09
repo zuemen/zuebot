@@ -132,6 +132,7 @@ class Monitor:
         備援閒置偵測：只針對「送出訊息後還在等完成」而且有人關注的 CLI。
         畫面連續 FALLBACK_SAME_TIMES 次比對都沒變、而且出現輸入框 → 視為完成並回報。
         正常情況下 Stop hook 會先到（並把它從等待清單移除），這裡就不會觸發。
+        一般終端機沒有 hook，全靠這裡：指令跑完、前景程式回到 shell 而且畫面不再變化，就回報。
         """
         for name, since in list(self.toolbox.awaiting.items()):
             chat_id = self.state.watcher(name)
@@ -145,9 +146,14 @@ class Monitor:
             last_digest, same = self._screen_history.get(name, (None, 0))
             same = same + 1 if digest == last_digest else 0
             self._screen_history[name] = (digest, same)
-            if state == screen.IDLE and same >= FALLBACK_SAME_TIMES:
+            shell = screen.is_shell(await tmux_ops.pane_command(name))
+            if (state == screen.IDLE or shell) and same >= FALLBACK_SAME_TIMES:
                 self.toolbox.awaiting.pop(name, None)
                 self._screen_history.pop(name, None)
+                if shell:
+                    self.toolbox.spawn(self.report_completion(
+                        name, chat_id, "", "", note="（終端機的指令已經跑完，回到提示字元）"))
+                    continue
                 log.info("[%s] 備援偵測：畫面沒變且在等輸入，視為閒置", name)
                 self.toolbox.spawn(self.report_completion(
                     name, chat_id, "", "", note="（沒有收到 hook 通知，依畫面判斷已經閒置；若常出現這則，請執行 ./scripts/check_env.sh 檢查 hook）"))

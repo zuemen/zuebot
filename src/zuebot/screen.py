@@ -194,5 +194,5 @@ def dialog_signature(screen_text: str) -> str:
 
 
 def is_shell(command: str) -> bool:
-    """前景程式是 shell 代表 claude 已經結束，只剩下終端機。"""
+    """前景程式是 shell（zsh、bash…）：這是一般終端機，或 claude 已經結束，只剩下提示字元。"""
     return command.strip().lower() in SHELLS

@@ -421,6 +421,26 @@ class TestBotFlow(unittest.IsolatedAsyncioTestCase):
         self.assertIn("不一樣了", result)
         self.assertNotIn("權限回答", await self.screen("競賽"))
 
+    async def test_plain_terminal(self):
+        """一般終端機：清單標示出來；送指令一律要確認；指令跑完回到提示字元時回報。"""
+        from zuebot import monitor as monitor_mod
+        await tmux_ops.new_session("term", str(self.dir), "sh")
+        await asyncio.sleep(0.5)
+        listing = await self.zb.toolbox.list_clis(USER)
+        self.assertIn("一般終端機", listing.data[0]["state"])
+        result = await self.zb.toolbox.send_text("term", "echo zuebot-ok", USER)
+        self.assertIsNotNone(result.pending)                       # 一定要確認
+        self.assertIn("當成指令直接執行", result.pending.title)
+        self.assertNotIn("zuebot-ok\n", await self.screen("term"))
+        await self.zb.present(USER, await result.pending.run())   # 模擬按同意
+        await asyncio.sleep(0.5)
+        self.assertIn("zuebot-ok", await self.screen("term"))
+        self.zb.toolbox.awaiting["term"] = 0
+        self.brain_says("終端機印出了 zuebot-ok，沒有錯誤。")
+        for _ in range(monitor_mod.FALLBACK_SAME_TIMES + 1):
+            await self.zb.monitor.fallback_idle()
+        await self.wait_for_text("回到提示字元")
+
     async def test_new_cli_outside_root_rejected(self):
         """new_cli 只能在 ALLOWED_ROOT 底下。"""
         self.brain_says({"reply": "", "done": True,

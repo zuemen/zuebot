@@ -106,7 +106,7 @@ mkdir -p "$HOME/projects"
 step "7. 安裝 Claude Code hook"
 .venv/bin/python -m zuebot.setup_hooks || fail "hook 安裝失敗"
 
-step "8. 讓終端機可以直接打 cc"
+step "8. 讓終端機都跑在 tmux 裡（手機才看得到）、可以直接打 cc"
 chmod +x bin/cc scripts/*.sh src/zuebot/hook.py
 ZSHRC="$HOME/.zshrc"
 if grep -q "zuebot/bin/cc" "$ZSHRC" 2>/dev/null || grep -q "$ROOT/bin/cc" "$ZSHRC" 2>/dev/null; then
@@ -117,7 +117,18 @@ else
     echo "# zuebot：用 tmux 開一個 claude，讓 Telegram bot 管得到它（cc <名稱> [資料夾]）"
     echo "alias cc=\"$ROOT/bin/cc\""
   } >> "$ZSHRC"
-  ok "已加到 ~/.zshrc（新開的終端機視窗才會生效，或執行 source ~/.zshrc）"
+  ok "已加入 cc 指令"
+fi
+if grep -q "shell/zuebot.zsh" "$ZSHRC" 2>/dev/null; then
+  ok "~/.zshrc 已經有自動 tmux 的設定"
+else
+  {
+    echo ""
+    echo "# zuebot：直接打 claude、或新開終端機視窗，都會自動放進 tmux，手機上的 bot 才看得到、管得到"
+    echo "# 只想包 claude、一般視窗維持原樣：在下一行前面加 ZUEBOT_TMUX_EVERY_TERMINAL=0；全部關閉：ZUEBOT_WRAP=0"
+    echo "source \"$ROOT/shell/zuebot.zsh\""
+  } >> "$ZSHRC"
+  ok "已加入自動 tmux（新開的終端機視窗才會生效；已經開著的視窗要關掉重開）"
 fi
 
 step "9. 環境檢查"

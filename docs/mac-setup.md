@@ -120,12 +120,13 @@ ALLOWED_USER_IDS=123456789
 ```bash
 .venv/bin/python -m zuebot
 ```
-另外開一個終端機視窗（`⌘ + N`），用 `cc` 開一個被管理的 CLI：
+另外開一個終端機視窗（`⌘ + N`）。安裝後新開的視窗都會自動在 tmux 裡，直接打 `claude` 也會自動開在 tmux 裡：
 ```bash
-mkdir -p ~/projects/demo
-cc 測試 ~/projects/demo
+mkdir -p ~/projects/demo && cd ~/projects/demo && claude
 ```
-會進入 claude 的畫面。按 `Ctrl + b` 放開後再按 `d`，就能離開畫面，claude 會在背景繼續跑。
+畫面會先出現「📡 zuebot：這個 claude 開在 tmux「demo」裡」，接著就是平常的 claude。
+關掉視窗、或按 `Ctrl + b` 放開後再按 `d`，claude 都會在背景繼續跑；回到它：`cc demo`。
+> 安裝前就開著的視窗（包括已經在跑的 claude）bot 看不到，要關掉重開。
 
 在 Telegram 試試看：
 - `現在有哪些 CLI？`
@@ -176,4 +177,7 @@ cc 測試 ~/projects/demo
 | 完成時沒有通知 | 要先「關注」那個 CLI；`.venv/bin/python -m zuebot.setup_hooks --check` 確認 hook；改過 hook 設定後要重開 claude |
 | 中文 session 名稱變成底線 | 更新到最新版 zuebot（已修正）；手動開 tmux 時加 `-u` |
 | 大腦一直逾時 | 執行 `claude auth status` 確認登入；可在 `.env` 設 `BRAIN_MODEL=haiku` 換成較快的模型；斜線指令不受影響 |
+| bot 說「沒有 CLI 在跑」 | 安裝前就開著的視窗看不到，關掉重開；確認 `~/.zshrc` 有 `source …/shell/zuebot.zsh` 這行，並開一個「新的」視窗 |
+| 在 tmux 裡沒辦法用滑鼠選取文字 | 按住 `fn`（Terminal）或 `Option`（iTerm2）再拖曳 |
+| 不想讓每個視窗都進 tmux | 在 `~/.zshrc` 的 `source …/shell/zuebot.zsh` 前一行加 `ZUEBOT_TMUX_EVERY_TERMINAL=0` |
 | 想看 bot 執行了哪些 tmux 指令 | 手動啟動時加 `--debug`：`.venv/bin/python -m zuebot --debug` |

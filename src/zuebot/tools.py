@@ -150,6 +150,18 @@ class ToolBox:
                 f"「{query}」符合好幾個 CLI，你要{action}的是哪一個？", candidates, fn))
         return ToolResult(ok=False, message=f"❌ {error}")
 
+    @staticmethod
+    def describe(command: str, state: str) -> str:
+        """
+        給人看的狀態：一般終端機（前景是 shell）、正在跑別的程式（例如 python），或 claude 的狀態。
+        有了 shell/zuebot.zsh，你開的每個終端機視窗都會出現在清單裡，所以要分得出來。
+        """
+        if screen.is_shell(command):
+            return "一般終端機（等你下指令）"
+        if state == screen.UNKNOWN and command and "claude" not in command.lower() and command != "node":
+            return f"正在執行 {command}"
+        return screen.STATE_LABELS[state]
+
     def _check_text(self, text: str, source: str | None) -> str | None:
         """
         送出文字前的安全檢查。回傳 None 代表可以直接送；回傳字串代表需要你確認的原因。
@@ -178,7 +190,7 @@ class ToolBox:
                 state, _ = await cli.get_state(s.name, 30)
             except TmuxError:
                 state = screen.UNKNOWN
-            label = "claude 已結束" if screen.is_shell(s.command) else screen.STATE_LABELS[state]
+            label = self.describe(s.command, state)
             watched = self.state.watcher(s.name) is not None
             rows.append({"name": s.name, "path": s.path, "state": label, "watched": watched,
                          "current": s.name == current})
@@ -217,6 +229,10 @@ class ToolBox:
                 self.awaiting[name] = time.time()
                 return f"📨 已送到 [{name}]，完成時會通知你。{note}"
             reason = self._check_text(text, source)
+            if screen.is_shell(await tmux_ops.pane_command(name)):
+                # 一般終端機：送進去的文字會被 shell 當成指令執行，所以一律要你確認
+                shell_note = "這是一般終端機（不是 claude），送出去的文字會被當成指令直接執行"
+                reason = f"{shell_note}；{reason}" if reason else shell_note
             if reason:
                 preview = text if len(text) <= 800 else text[:800] + "…（以下省略）"
                 return ToolResult(pending=Pending(f"要把下面這段送進 [{name}] 嗎？\n原因：{reason}\n\n「{preview}」",
